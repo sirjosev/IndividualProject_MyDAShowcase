@@ -1,730 +1,565 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { initializeApp } from 'firebase/app';
-import { getFirestore, collection, getDocs, doc, setDoc, onSnapshot } from 'firebase/firestore';
-import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from 'firebase/auth';
-
-// Icons from Lucide React (https://lucide.dev/)
-// npm install lucide-react
-// For this environment, we'll use simple text/SVG placeholders if direct import isn't feasible
-// Or, you can copy/paste SVG code for essential icons
-
-const GithubIcon = ({ className }) => (
-  <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"></path>
-  </svg>
-);
-
-const LinkedinIcon = ({ className }) => (
-  <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-2-2 2 2 0 0 0-2 2v7h-4v-7a6 6 0 0 1 6-6z"></path><rect x="2" y="9" width="4" height="12"></rect><circle cx="4" cy="4" r="2"></circle>
-  </svg>
-);
-
-const MailIcon = ({ className }) => (
-  <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <rect width="20" height="16" x="2" y="4" rx="2"></rect><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"></path>
-  </svg>
-);
-
-const SmartphoneIcon = ({ className }) => (
- <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <rect width="14" height="20" x="5" y="2" rx="2" ry="2"></rect><path d="M12 18h.01"></path>
-  </svg>
-);
-
-const ExternalLinkIcon = ({ className }) => (
-  <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line>
-  </svg>
-);
-
-const XIcon = ({ className }) => (
-  <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line>
-  </svg>
-);
-
-const CodeIcon = ({ className }) => (
-    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline>
-    </svg>
-);
-
-const PresentationIcon = ({ className }) => (
-    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M2 3h20"></path><path d="M4 3v18"></path><path d="M20 3v18"></path><path d="M12 12l-4 4l-4-4"></path><path d="M8 3v4"></path><path d="M16 3v4"></path><path d="M12 3v4"></path>
-    </svg>
-);
-
-
-// --- Firebase Configuration ---
-// IMPORTANT: Replace with your actual Firebase config
-// const firebaseConfig = {
-//   apiKey: "YOUR_API_KEY",
-//   authDomain: "YOUR_AUTH_DOMAIN",
-//   projectId: "YOUR_PROJECT_ID",
-//   storageBucket: "YOUR_STORAGE_BUCKET",
-//   messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
-//   appId: "YOUR_APP_ID"
-// };
-
-// For Canvas Environment (DO NOT CHANGE these variable names)
-const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : { apiKey: "DEMO_ONLY", authDomain: "DEMO_ONLY", projectId: "DEMO_ONLY" }; // Fallback for local dev
-const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-portfolio-app';
-
-
-// --- Initial Project Data (Based on PDF) ---
-// This data would ideally be fetched from Firestore
-const INITIAL_PROJECTS_DATA = [
-  {
-    id: "flight-delay-prediction",
-    title: "Prediksi Keterlambatan Penerbangan & Optimasi Operasional",
-    description: "Menganalisis faktor penyebab keterlambatan penerbangan untuk optimasi jadwal dan kepuasan pelanggan.",
-    businessProblem: "Memahami dan menganalisis faktor-faktor penyebab keterlambatan penerbangan, serta mengembangkan model prediksi keterlambatan yang akurat. Tujuannya adalah untuk membantu maskapai dan otoritas bandara dalam mengoptimalkan jadwal penerbangan, mengantisipasi risiko operasional, dan meningkatkan kepuasan pelanggan melalui perencanaan proaktif.",
-    dataset: "Dataset historis penerbangan berisi ribuan catatan penerbangan, dengan informasi detail seperti waktu keberangkatan dan kedatangan, kondisi cuaca, rute penerbangan, dan status keterlambatan.",
-    techStack: ["Python", "Pandas", "NumPy", "Scikit-learn", "XGBoost", "Matplotlib", "Seaborn", "Jupyter Notebook"],
-    keyFindings: [
-      "Faktor Kunci: Kondisi cuaca, waktu keberangkatan, dan rute penerbangan adalah variabel signifikan yang mempengaruhi keterlambatan.",
-      "Model Prediksi: Pendekatan berbasis machine learning mencapai akurasi tinggi dalam mengidentifikasi potensi keterlambatan.",
-      "Pola Temporal: Penerbangan pada jam sibuk dan hari padat menunjukkan probabilitas keterlambatan yang lebih tinggi.",
-      "Segmentasi Rute: Analisis mendetail memungkinkan identifikasi segmen rute tertentu yang memerlukan manajemen operasional ekstra."
-    ],
-    businessImpact: "Prediksi keterlambatan yang akurat membantu maskapai mengoptimalkan strategi penjadwalan ulang, mengurangi biaya operasional, meningkatkan layanan pelanggan, serta mendukung pengambilan keputusan strategis dan manajemen risiko.",
-    projectUrl: "https://github.com/yusufalrahman", // Ganti dengan URL GitHub proyek Anda
-    dashboardUrl: "#", 
-    imageUrl: "https://placehold.co/600x400/3B82F6/FFFFFF?text=Visualisasi+Prediksi+Penerbangan&font=Inter",
-    codeSnippets: [
-      { language: 'python', title: 'Memuat Data Penerbangan', code: 'import pandas as pd\n\n# Memuat dataset\ndf_flights = pd.read_csv("flight_delay_data.csv")\nprint("Data awal penerbangan:")\nprint(df_flights.head())' },
-      { language: 'python', title: 'Pelatihan Model XGBoost (Contoh)', code: 'from sklearn.model_selection import train_test_split\nfrom xgboost import XGBClassifier\n\n# Asumsikan X adalah fitur dan y adalah target (status keterlambatan)\nX_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)\n\n# Inisialisasi dan latih model\nxgb_model = XGBClassifier(use_label_encoder=False, eval_metric=\'logloss\')\nxgb_model.fit(X_train, y_train)\n\naccuracy = xgb_model.score(X_test, y_test)\nprint(f"Akurasi Model XGBoost: {accuracy:.4f}")' }
-    ],
-    visualizations: [
-        { title: "Faktor Keterlambatan Utama", url: "https://placehold.co/600x350/4ADE80/000000?text=Grafik+Faktor+Keterlambatan&font=Inter" },
-        { title: "Akurasi Model Prediksi", url: "https://placehold.co/600x350/F97316/000000?text=Grafik+Akurasi+Model&font=Inter" }
-    ]
-  },
-  {
-    id: "waterfowl-data-pipeline",
-    title: "Pipeline Data Unggas Air: Standarisasi Survei & Kontrol Kualitas Otomatis",
-    description: "Mengotomatiskan pemrosesan dan standarisasi laporan survei unggas air mentah.",
-    businessProblem: "Mengotomatiskan pemrosesan dan standarisasi laporan survei unggas air mentah untuk menghasilkan output data agregat yang konsisten. Solusi ini dirancang untuk mendukung peneliti satwa liar dengan memastikan pemantauan populasi bebek yang andal, memungkinkan analisis ekologi yang akurat dan keputusan konservasi yang tepat.",
-    dataset: "String survei dari lahan basah Amerika Utara, menggabungkan nama spesies bebek dengan jumlah yang dilaporkan. Memerlukan parsing, agregasi, dan kontrol kualitas (misalnya, mengecualikan laporan dengan 'Labrador Duck').",
-    techStack: ["Python", "Logika Manipulasi String Kustom", "Unit Testing (pytest)"],
-    keyFindings: [
-      "Standarisasi Seragam: Aturan yang kuat untuk mengubah nama bebek menjadi kode enam huruf yang konsisten.",
-      "Agregasi Akurat: Berhasil menjumlahkan hitungan untuk spesies, output diurutkan.",
-      "Jaminan Kualitas: Aturan diskualifikasi untuk dataset yang melaporkan spesies punah."
-    ],
-    businessImpact: "Peningkatan integritas data, analisis yang disederhanakan untuk peneliti, dan pendekatan yang dapat diskalakan untuk dataset ekologi lainnya.",
-    projectUrl: "https://github.com/yusufalrahman",
-    dashboardUrl: "#",
-    imageUrl: "https://placehold.co/600x400/10B981/FFFFFF?text=Alur+Pipeline+Data&font=Inter",
-     codeSnippets: [
-      { language: 'python', title: 'Standarisasi Nama Spesies', code: 'def standardize_species_name(name):\n    words = name.split()\n    if len(words) == 1:\n        return name[:6].upper() # Ambil 6 huruf pertama jika satu kata\n    else:\n        # Ambil 3 huruf pertama dari dua kata pertama\n        return (words[0][:3] + words[1][:3]).upper()\n\nprint(f"\'Mallard\': {standardize_species_name(\'Mallard\')}")\nprint(f"\'Blue-winged Teal\': {standardize_species_name(\'Blue-winged Teal\')}")' }
-    ],
-    visualizations: [
-        { title: "Contoh Kode Standar", url: "https://placehold.co/600x350/22D3EE/000000?text=Hasil+Standarisasi+Nama&font=Inter" },
-        { title: "Proses Agregasi Data", url: "https://placehold.co/600x350/A3E635/000000?text=Contoh+Data+Agregat&font=Inter" }
-    ]
-  },
-   {
-    id: "collinear-validator",
-    title: "Validator Kolinear: Pemeriksaan Akurasi Penjajaran Vektor",
-    description: "Memverifikasi apakah dua vektor yang berasal dari (0,0) adalah kolinear.",
-    businessProblem: "Memastikan penentuan akurat kolinearitas vektor, penting untuk grafika komputer, simulasi fisika, robotika, dan desain rekayasa.",
-    dataset: "Input algoritmik: dua pasang koordinat berbasis integer (x1, y1) dan (x2, y2), nilai antara -1000 dan 1000. Mencakup kasus tipikal dan edge case (vektor nol).",
-    techStack: ["Python", "Logika Kustom", "Unit Testing (pytest)"],
-    keyFindings: [
-      "Penanganan Edge Case yang Kuat: Algoritma mengurangi pembagian-dengan-nol menggunakan perbandingan perkalian.",
-      "Kesederhanaan dan Efisiensi: Menghindari jebakan umum, berfungsi sebagai alat pengajaran yang baik.",
-      "Wawasan Dasar: Metodologi yang jelas untuk membedakan apakah satu vektor adalah kelipatan skalar dari yang lain."
-    ],
-    businessImpact: "Blok bangunan untuk komputasi geometris lanjutan, sumber belajar yang ditingkatkan, dan dapat diskalakan ke dimensi yang lebih tinggi.",
-    projectUrl: "https://github.com/yusufalrahman",
-    dashboardUrl: "#",
-    imageUrl: "https://placehold.co/600x400/8B5CF6/FFFFFF?text=Validasi+Kolinearitas+Vektor&font=Inter",
-    codeSnippets: [
-      { language: 'python', title: 'Fungsi Pengecekan Kolinearitas', code: 'def are_vectors_collinear(x1, y1, x2, y2):\n    # Vektor (x1, y1) dan (x2, y2) kolinear jika hasil kali silang mereka nol (dalam 2D).\n    # x1*y2 - x2*y1 = 0  atau  x1*y2 == x2*y1\n    return x1 * y2 == x2 * y1\n\n# Contoh penggunaan\nprint(f"Vektor (1,1) dan (2,2) kolinear: {are_vectors_collinear(1, 1, 2, 2)}") # Harusnya True\nprint(f"Vektor (1,1) dan (2,3) kolinear: {are_vectors_collinear(1, 1, 2, 3)}") # Harusnya False\nprint(f"Vektor (0,0) dan (5,5) kolinear: {are_vectors_collinear(0, 0, 5, 5)}") # Harusnya True' }
-    ],
-    visualizations: [
-        { title: "Demo Vektor Kolinear", url: "https://placehold.co/600x350/EC4899/000000?text=Contoh+Vektor+Kolinear&font=Inter" },
-        { title: "Demo Vektor Non-Kolinear", url: "https://placehold.co/600x350/FACC15/000000?text=Contoh+Vektor+Non-Kolinear&font=Inter" }
-    ]
-  },
-  {
-    id: "fault-detection-bots",
-    title: "Deteksi Kesalahan pada BOT Otonom: Kerangka Kerja Pemecahan Masalah Berbasis Data",
-    description: "Mendeteksi dan menonaktifkan BOT yang rusak atau jahat dengan menganalisis log sistem.",
-    businessProblem: "Memastikan keamanan dan keandalan robot otonom dengan mendeteksi dan menonaktifkan BOT yang tidak berfungsi atau jahat dengan menganalisis log sistem untuk pola tertentu (bilangan prima, digit ketiga 2 atau 3, muncul >3 kali). Jika >50 integer yang cocok ditemukan, nonaktifkan BOT.",
-    dataset: "Log sistem: urutan integer empat digit yang mewakili internal sistem BOT.",
-    techStack: ["Python", "Algoritma Deteksi Bilangan Prima", "Logika Pengenalan Pola", "Sistem Keputusan Otomatis"],
-    keyFindings: [
-      "Parsing Log yang Efisien: Pendekatan yang disederhanakan untuk mengekstrak dan menganalisis log.",
-      "Deteksi Berbasis Pola: Sistem berbasis aturan untuk menandai BOT yang menunjukkan perilaku anomali.",
-      "Skalabilitas: Metodologi dapat diperluas ke dataset yang lebih besar dan sistem waktu-nyata."
-    ],
-    businessImpact: "Peningkatan keamanan dengan menetralkan BOT jahat, efisiensi operasional dengan mengotomatiskan pemecahan masalah, dan kerangka kerja yang dapat diskalakan untuk aplikasi yang lebih luas.",
-    projectUrl: "https://github.com/yusufalrahman",
-    dashboardUrl: "#",
-    imageUrl: "https://placehold.co/600x400/F43F5E/FFFFFF?text=Deteksi+Kesalahan+BOT&font=Inter",
-    codeSnippets: [
-      { language: 'python', title: 'Pengecekan Bilangan Prima & Kondisi Log', code: 'def is_prime(n):\n    if n < 2: return False\n    for i in range(2, int(n**0.5) + 1):\n        if n % i == 0: return False\n    return True\n\ndef check_log_entry(entry_value):\n    entry_str = str(entry_value)\n    # Kondisi: prima, digit ketiga \'2\' atau \'3\'\n    if len(entry_str) == 4 and is_prime(entry_value) and entry_str[2] in ["2", "3"]:\n        return True\n    return False\n\nlog_entry = 1223 # Contoh: 1223 adalah prima, digit ketiga adalah 2\nprint(f"Log {log_entry} memenuhi kriteria: {check_log_entry(log_entry)}")' }
-    ],
-    visualizations: [
-        { title: "Analisis Pola Log", url: "https://placehold.co/600x350/6366F1/000000?text=Grafik+Analisis+Pola+Log&font=Inter" },
-        { title: "Dasbor Status BOT", url: "https://placehold.co/600x350/D946EF/000000?text=Dasbor+Pemantauan+BOT&font=Inter" }
-    ]
-  },
-  {
-    id: "race-performance-analytics",
-    title: "Analitik Performa Balap: Wawasan Statistik Terstandarisasi untuk Atlet",
-    description: "Menganalisis hasil balap untuk menyediakan statistik seperti rentang, rata-rata, dan waktu median.",
-    businessProblem: "Menganalisis hasil balap secara akurat untuk asosiasi atletik guna menyediakan statistik yang bermakna seperti rentang, rata-rata, dan waktu median (format hhmmss). Ini memastikan evaluasi kinerja yang terstandarisasi.",
-    dataset: "Hasil balap diformat sebagai string (hhmmss). Tantangan dalam parsing, pengurutan, dan penghitungan statistik.",
-    techStack: ["Python", "Parsing & Pemformatan String", "Pengurutan & Komputasi Statistik", "Unit Testing"],
-    keyFindings: [
-      "Analisis Waktu Terstandarisasi: Pendekatan terstruktur untuk mengekstrak dan menghitung statistik balap.",
-      "Komputasi Efisien: Pengurutan dan perhitungan statistik yang dioptimalkan untuk dataset besar.",
-      "Wawasan Berbasis Data: Perbandingan yang bermakna antar atlet."
-    ],
-    businessImpact: "Peningkatan pelacakan kinerja untuk pelatih/analis, pengambilan keputusan yang dioptimalkan untuk pelatihan/kompetisi, dan dapat diskalakan ke analitik olahraga yang lebih luas.",
-    projectUrl: "https://github.com/yusufalrahman",
-    dashboardUrl: "#",
-    imageUrl: "https://placehold.co/600x400/0EA5E9/FFFFFF?text=Grafik+Analitik+Balap&font=Inter",
-    codeSnippets: [
-      { language: 'python', title: 'Parsing & Formatting Waktu Balap', code: 'def parse_race_time(time_str):\n    """Mengubah string hhmmss menjadi total detik."""\n    h = int(time_str[0:2])\n    m = int(time_str[2:4])\n    s = int(time_str[4:6])\n    return h * 3600 + m * 60 + s\n\ndef format_seconds_to_hms(total_seconds):\n    """Mengubah total detik kembali ke format hh:mm:ss."""\n    h = total_seconds // 3600\n    m = (total_seconds % 3600) // 60\n    s = total_seconds % 60\n    return f"{h:02d}:{m:02d}:{s:02d}"\n\nparsed_seconds = parse_race_time("011030") # 1 jam, 10 menit, 30 detik\nprint(f"Detik: {parsed_seconds}, Format HMS: {format_seconds_to_hms(parsed_seconds)}")' }
-    ],
-    visualizations: [
-        { title: "Distribusi Performa Atlet", url: "https://placehold.co/600x350/06B6D4/000000?text=Grafik+Distribusi+Performa&font=Inter" },
-        { title: "Tren Waktu Median", url: "https://placehold.co/600x350/84CC16/000000?text=Grafik+Tren+Waktu+Median&font=Inter" }
-    ]
-  }
-];
-
-// --- Helper Functions ---
-const Section = ({ children, className = '', id = '' }) => {
-  const ref = useRef(null);
-  const [isVisible, setIsVisible] = useState(false);
-
-  useEffect(() => {
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) {
-          setIsVisible(true);
-          observer.unobserve(entry.target);
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Portofolio Yusuf Al-Rahman - Data Analyst</title>
+    <!-- Tailwind CSS via CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Custom Font (Inter) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #111827; /* bg-gray-900 */
+            color: #f3f4f6; /* text-gray-100 */
+            scroll-behavior: smooth;
         }
-      },
-      { threshold: 0.1 }
-    );
+        .modal {
+            display: none; /* Hidden by default */
+            animation: fadeIn 0.3s ease-out;
+        }
+        .modal.open {
+            display: flex;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: scale(0.95); }
+            to { opacity: 1; transform: scale(1); }
+        }
+        .section-fade-in {
+            opacity: 0;
+            transform: translateY(20px);
+            transition: opacity 0.7s ease-out, transform 0.7s ease-out;
+        }
+        .section-fade-in.visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+        /* Custom scrollbar for modal content */
+        .modal-content::-webkit-scrollbar {
+            width: 8px;
+        }
+        .modal-content::-webkit-scrollbar-track {
+            background: #374151; /* bg-gray-700 */
+            border-radius: 10px;
+        }
+        .modal-content::-webkit-scrollbar-thumb {
+            background: #6b7280; /* bg-gray-500 */
+            border-radius: 10px;
+        }
+        .modal-content::-webkit-scrollbar-thumb:hover {
+            background: #9ca3af; /* bg-gray-400 */
+        }
+        .prose-sm { /* Simplified prose styling for readability */
+            font-size: 0.875rem; /* 14px */
+            line-height: 1.625; /* 26px */
+        }
+        .prose-invert .prose-sm ul > li::before { /* Custom bullet color for dark mode */
+            background-color: #9ca3af; /* text-gray-400 */
+        }
+        .prose-invert h4 {
+            color: #93c5fd; /* text-blue-300, adjust as needed */
+        }
+        .jupyter-cell-title {
+            font-size: 1.125rem; /* text-lg */
+            font-weight: 600; /* font-semibold */
+            margin-bottom: 0.5rem; /* mb-2 */
+            padding-left: 0.5rem; /* pl-2 */
+            border-left-width: 4px;
+        }
+        .jupyter-code-block {
+            background-color: #1f2937; /* bg-gray-800 */
+            border-radius: 0.5rem; /* rounded-lg */
+            overflow: hidden;
+            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -1px rgba(0,0,0,0.06); /* shadow-md */
+            margin-bottom: 1rem; /* mb-4 */
+        }
+        .jupyter-code-title {
+            font-size: 0.875rem; /* text-sm */
+            color: #9ca3af; /* text-gray-400 */
+            padding: 0.5rem 1rem; /* px-4 py-2 */
+            background-color: #374151; /* bg-gray-700 */
+        }
+        .jupyter-code-content {
+            padding: 1rem; /* p-4 */
+            font-size: 0.875rem; /* text-sm */
+            overflow-x: auto;
+            color: #d1d5db; /* text-gray-300 */
+        }
+        .jupyter-code-content code {
+             font-family: 'Courier New', Courier, monospace;
+        }
+    </style>
+</head>
+<body>
 
-    if (ref.current) {
-      observer.observe(ref.current);
-    }
-
-    return () => {
-      if (ref.current && observer) { // Pastikan ref.current dan observer ada sebelum unobserve
-        observer.unobserve(ref.current);
-      }
-    };
-  }, []);
-
-  return (
-    <section
-      id={id}
-      ref={ref}
-      className={`py-16 md:py-24 px-4 md:px-8 transition-opacity duration-1000 ease-in-out ${isVisible ? 'opacity-100' : 'opacity-0'} ${className}`}
-    >
-      {children}
-    </section>
-  );
-};
-
-
-// --- Components ---
-const Header = () => (
-  <header className="bg-gray-900 text-white sticky top-0 z-50 shadow-lg">
-    <div className="container mx-auto px-4 md:px-8 py-4 flex justify-between items-center">
-      <a href="#" className="text-2xl font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-500">
-        Yusuf Al-Rahman
-      </a>
-      <nav>
-        <ul className="flex space-x-6">
-          {['Beranda', 'Proyek', 'Filosofi', 'Kontak'].map((item) => (
-            <li key={item}>
-              <a href={`#${item.toLowerCase()}`} className="hover:text-blue-400 transition-colors duration-300">
-                {item}
-              </a>
-            </li>
-          ))}
-        </ul>
-      </nav>
-    </div>
-  </header>
-);
-
-const Hero = () => (
-  <Section id="beranda" className="bg-gray-900 text-white text-center">
-    <div className="container mx-auto">
-      <img
-        // Ganti dengan URL foto profil Anda
-        src="https://placehold.co/150x150/FFFFFF/3B82F6?text=YAR&font=Inter" 
-        alt="Yusuf Al-Rahman"
-        className="w-36 h-36 md:w-48 md:h-48 rounded-full mx-auto mb-8 border-4 border-blue-500 shadow-xl"
-      />
-      <h1 className="text-4xl md:text-6xl font-extrabold mb-4">
-        <span className="bg-clip-text text-transparent bg-gradient-to-r from-blue-400 via-purple-500 to-pink-500">
-          Yusuf Al-Rahman
-        </span>
-      </h1>
-      <p className="text-xl md:text-2xl text-gray-300 mb-8 max-w-2xl mx-auto">
-        Data Analyst dengan passion untuk mengubah data kompleks menjadi wawasan yang dapat ditindaklanjuti dan berdampak bisnis.
-      </p>
-      <div className="flex justify-center space-x-6">
-        <a
-          href="https://github.com/yusufalrahman" // Ganti dengan link GitHub Anda
-          target="_blank"
-          rel="noopener noreferrer"
-          className="bg-gray-700 hover:bg-gray-600 text-white font-semibold py-3 px-6 rounded-lg transition-transform duration-300 transform hover:scale-105 shadow-md flex items-center space-x-2"
-        >
-          <GithubIcon className="w-5 h-5" />
-          <span>GitHub</span>
-        </a>
-        <a
-          href="https://www.linkedin.com/in/yusuf-al-rahman-8049a21b3/" // Ganti dengan link LinkedIn Anda
-          target="_blank"
-          rel="noopener noreferrer"
-          className="bg-blue-600 hover:bg-blue-500 text-white font-semibold py-3 px-6 rounded-lg transition-transform duration-300 transform hover:scale-105 shadow-md flex items-center space-x-2"
-        >
-          <LinkedinIcon className="w-5 h-5" />
-          <span>LinkedIn</span>
-        </a>
-      </div>
-    </div>
-  </Section>
-);
-
-const ProjectCard = ({ project, onSelectProject }) => (
-  <div 
-    className="bg-gray-800 rounded-xl shadow-2xl overflow-hidden transform hover:scale-105 transition-all duration-300 cursor-pointer flex flex-col h-full group"
-    onClick={() => onSelectProject(project)}
-  >
-    <div className="relative h-56">
-        <img 
-            src={project.imageUrl || "https://placehold.co/600x400/777/FFF?text=Project+Image&font=Inter"} 
-            alt={project.title} 
-            className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
-            onError={(e) => e.target.src = "https://placehold.co/600x400/777/FFF?text=Error+Loading&font=Inter"}
-        />
-        <div className="absolute inset-0 bg-black bg-opacity-50 group-hover:bg-opacity-30 transition-opacity duration-300"></div>
-    </div>
-    <div className="p-6 flex flex-col flex-grow">
-      <h3 className="text-xl font-semibold mb-2 text-blue-400 group-hover:text-blue-300 transition-colors duration-300">{project.title}</h3>
-      <p className="text-gray-400 text-sm mb-4 flex-grow">{project.description}</p>
-      <div className="mt-auto">
-        <button
-            onClick={(e) => { e.stopPropagation(); onSelectProject(project); }}
-            className="w-full bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white font-medium py-2 px-4 rounded-lg transition-all duration-300 shadow-md hover:shadow-lg"
-        >
-            Lihat Detail Proyek
-        </button>
-      </div>
-    </div>
-  </div>
-);
-
-const ProjectDetailModal = ({ project, onClose }) => {
-  if (!project) return null;
-
-  // const [activeTab, setActiveTab] = useState('detail'); // 'detail', 'code', 'visuals' // Not used yet
-
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4 transition-opacity duration-300 animate-fadeIn">
-      <div className="bg-gray-800 text-white rounded-xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-hidden flex flex-col">
-        {/* Header Modal */}
-        <div className="p-6 border-b border-gray-700 flex justify-between items-center">
-          <h2 className="text-2xl font-bold text-blue-400">{project.title}</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-white transition-colors">
-            <XIcon className="w-7 h-7" />
-          </button>
+    <!-- Header -->
+    <header class="bg-gray-900 text-white sticky top-0 z-50 shadow-lg">
+        <div class="container mx-auto px-4 md:px-8 py-4 flex justify-between items-center">
+            <a href="#" class="text-2xl font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-500">
+                Yusuf Al-Rahman
+            </a>
+            <nav>
+                <ul class="flex space-x-4 md:space-x-6 text-sm md:text-base">
+                    <li><a href="#beranda" class="hover:text-blue-400 transition-colors duration-300">Beranda</a></li>
+                    <li><a href="#proyek" class="hover:text-blue-400 transition-colors duration-300">Proyek</a></li>
+                    <li><a href="#filosofi" class="hover:text-blue-400 transition-colors duration-300">Filosofi</a></li>
+                    <li><a href="#kontak" class="hover:text-blue-400 transition-colors duration-300">Kontak</a></li>
+                </ul>
+            </nav>
         </div>
+    </header>
 
-        {/* Konten Modal dengan Scroll */}
-        <div className="overflow-y-auto p-6 flex-grow">
-          {/* "Jupyter Cell" Style Sections */}
-          <div className="mb-6">
-            <h4 className="text-lg font-semibold text-purple-400 mb-2 border-l-4 border-purple-400 pl-2">Masalah Bisnis</h4>
-            <p className="text-gray-300 leading-relaxed prose prose-sm prose-invert max-w-none">{project.businessProblem}</p>
-          </div>
-
-          <div className="mb-6">
-            <h4 className="text-lg font-semibold text-purple-400 mb-2 border-l-4 border-purple-400 pl-2">Dataset</h4>
-            <p className="text-gray-300 leading-relaxed prose prose-sm prose-invert max-w-none">{project.dataset}</p>
-          </div>
-
-          <div className="mb-6">
-            <h4 className="text-lg font-semibold text-purple-400 mb-2 border-l-4 border-purple-400 pl-2">Teknologi yang Digunakan</h4>
-            <ul className="list-disc list-inside text-gray-300 space-y-1">
-              {project.techStack.map((tech, index) => <li key={index}>{tech}</li>)}
-            </ul>
-          </div>
-          
-          {project.codeSnippets && project.codeSnippets.length > 0 && (
-            <div className="mb-6">
-                <h4 className="text-lg font-semibold text-green-400 mb-3 border-l-4 border-green-400 pl-2 flex items-center">
-                    <CodeIcon className="w-5 h-5 mr-2"/> Cuplikan Kode
-                </h4>
-                {project.codeSnippets.map((snippet, index) => (
-                    <div key={index} className="mb-4 bg-gray-900 rounded-lg overflow-hidden shadow-md">
-                        <p className="text-sm text-gray-400 px-4 py-2 bg-gray-700">{snippet.title || `Kode ${snippet.language}`}</p>
-                        <pre className="p-4 text-sm overflow-x-auto language-python">
-                            <code className="font-mono">{snippet.code}</code>
-                        </pre>
-                    </div>
-                ))}
-            </div>
-          )}
-
-          <div className="mb-6">
-            <h4 className="text-lg font-semibold text-purple-400 mb-2 border-l-4 border-purple-400 pl-2">Temuan Utama</h4>
-            <ul className="list-disc list-inside text-gray-300 space-y-1 prose prose-sm prose-invert max-w-none">
-              {project.keyFindings.map((finding, index) => <li key={index}>{finding}</li>)}
-            </ul>
-          </div>
-          
-          {project.visualizations && project.visualizations.length > 0 && (
-            <div className="mb-6">
-                <h4 className="text-lg font-semibold text-yellow-400 mb-3 border-l-4 border-yellow-400 pl-2 flex items-center">
-                    <PresentationIcon className="w-5 h-5 mr-2"/> Visualisasi Kunci
-                </h4>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {project.visualizations.map((viz, index) => (
-                        <div key={index} className="bg-gray-700 p-3 rounded-lg shadow-md group">
-                            <img 
-                                src={viz.url} 
-                                alt={viz.title || `Visualisasi ${index + 1}`} 
-                                className="w-full h-auto rounded object-contain mb-2 border border-gray-600 transition-transform duration-300 group-hover:scale-105"
-                                onError={(e) => e.target.src = "https://placehold.co/400x250/777/FFF?text=Error+Loading+Viz&font=Inter"}
-                            />
-                            <p className="text-center text-sm text-gray-300">{viz.title || `Visualisasi ${index + 1}`}</p>
-                        </div>
-                    ))}
+    <main>
+        <!-- Hero Section -->
+        <section id="beranda" class="bg-gray-900 text-white text-center py-16 md:py-24 px-4 md:px-8 section-fade-in">
+            <div class="container mx-auto">
+                <img src="https://placehold.co/150x150/FFFFFF/3B82F6?text=YAR&font=Inter" alt="Yusuf Al-Rahman" class="w-36 h-36 md:w-48 md:h-48 rounded-full mx-auto mb-8 border-4 border-blue-500 shadow-xl">
+                <h1 class="text-4xl md:text-6xl font-extrabold mb-4">
+                    <span class="bg-clip-text text-transparent bg-gradient-to-r from-blue-400 via-purple-500 to-pink-500">
+                        Yusuf Al-Rahman
+                    </span>
+                </h1>
+                <p class="text-xl md:text-2xl text-gray-300 mb-8 max-w-2xl mx-auto">
+                    Data Analyst dengan passion untuk mengubah data kompleks menjadi wawasan yang dapat ditindaklanjuti dan berdampak bisnis.
+                </p>
+                <div class="flex justify-center space-x-6">
+                    <a href="https://github.com/yusufalrahman" target="_blank" rel="noopener noreferrer" class="bg-gray-700 hover:bg-gray-600 text-white font-semibold py-3 px-6 rounded-lg transition-transform duration-300 transform hover:scale-105 shadow-md flex items-center space-x-2">
+                        <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"></path></svg>
+                        <span>GitHub</span>
+                    </a>
+                    <a href="https://www.linkedin.com/in/yusuf-al-rahman-8049a21b3/" target="_blank" rel="noopener noreferrer" class="bg-blue-600 hover:bg-blue-500 text-white font-semibold py-3 px-6 rounded-lg transition-transform duration-300 transform hover:scale-105 shadow-md flex items-center space-x-2">
+                        <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-2-2 2 2 0 0 0-2 2v7h-4v-7a6 6 0 0 1 6-6z"></path><rect x="2" y="9" width="4" height="12"></rect><circle cx="4" cy="4" r="2"></circle></svg>
+                        <span>LinkedIn</span>
+                    </a>
                 </div>
             </div>
-          )}
+        </section>
 
-          <div className="mb-6">
-            <h4 className="text-lg font-semibold text-purple-400 mb-2 border-l-4 border-purple-400 pl-2">Dampak Bisnis</h4>
-            <p className="text-gray-300 leading-relaxed prose prose-sm prose-invert max-w-none">{project.businessImpact}</p>
-          </div>
+        <!-- Projects Section -->
+        <section id="proyek" class="bg-gray-800 py-16 md:py-24 px-4 md:px-8 section-fade-in">
+            <div class="container mx-auto">
+                <h2 class="text-3xl md:text-4xl font-bold text-center mb-12 text-white">
+                    <span class="bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-500">
+                        Proyek Unggulan
+                    </span>
+                </h2>
+                <div id="project-cards-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                    <!-- Project cards will be injected here by JavaScript -->
+                </div>
+            </div>
+        </section>
 
-          <div className="mt-6 flex flex-wrap gap-4">
-            {project.projectUrl && project.projectUrl !== "#" && (
-              <a
-                href={project.projectUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="bg-gray-700 hover:bg-gray-600 text-white font-medium py-2 px-4 rounded-lg transition-colors duration-300 flex items-center space-x-2"
-              >
-                <GithubIcon className="w-5 h-5" />
-                <span>Lihat di GitHub</span>
-              </a>
-            )}
-            {project.dashboardUrl && project.dashboardUrl !== "#" && (
-              <a
-                href={project.dashboardUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="bg-blue-600 hover:bg-blue-500 text-white font-medium py-2 px-4 rounded-lg transition-colors duration-300 flex items-center space-x-2"
-              >
-                <ExternalLinkIcon className="w-5 h-5" />
-                <span>Live Dashboard</span>
-              </a>
-            )}
-          </div>
+        <!-- Work Philosophy Section -->
+        <section id="filosofi" class="bg-gray-900 text-white py-16 md:py-24 px-4 md:px-8 section-fade-in">
+            <div class="container mx-auto text-center">
+                <h2 class="text-3xl md:text-4xl font-bold mb-10">
+                    <span class="bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-500">
+                        Filosofi Kerja Saya
+                    </span>
+                </h2>
+                <div class="grid md:grid-cols-3 gap-8 max-w-4xl mx-auto">
+                    <div class="bg-gray-800 p-6 rounded-lg shadow-lg transform hover:scale-105 transition-transform duration-300">
+                        <h3 class="text-xl font-semibold text-blue-400 mb-3">Pengambilan Keputusan Berbasis Data</h3>
+                        <p class="text-gray-300 text-sm">Setiap keputusan bisnis harus didukung oleh data yang solid. Pendekatan saya selalu dimulai dengan memahami konteks bisnis, mendefinisikan metrik yang relevan, dan menerapkan metode statistik yang sesuai.</p>
+                    </div>
+                    <div class="bg-gray-800 p-6 rounded-lg shadow-lg transform hover:scale-105 transition-transform duration-300">
+                        <h3 class="text-xl font-semibold text-blue-400 mb-3">Pembelajaran Berkelanjutan</h3>
+                        <p class="text-gray-300 text-sm">Ilmu data adalah bidang yang berkembang pesat. Saya aktif mengikuti perkembangan terbaru dalam alat analitik, algoritma machine learning, dan praktik terbaik industri.</p>
+                    </div>
+                    <div class="bg-gray-800 p-6 rounded-lg shadow-lg transform hover:scale-105 transition-transform duration-300">
+                        <h3 class="text-xl font-semibold text-blue-400 mb-3">Fokus pada Dampak Bisnis</h3>
+                        <p class="text-gray-300 text-sm">Keunggulan teknis harus diterjemahkan menjadi nilai bisnis. Setiap analisis yang saya lakukan diarahkan untuk menghasilkan wawasan yang dapat ditindaklanjuti yang meningkatkan kinerja bisnis.</p>
+                    </div>
+                </div>
+                <p class="mt-12 text-lg text-gray-400 italic">
+                    "In God we trust, all others must bring data." - W. Edwards Deming
+                </p>
+            </div>
+        </section>
+
+        <!-- Contact Section -->
+        <section id="kontak" class="bg-gray-800 text-white py-16 md:py-24 px-4 md:px-8 section-fade-in">
+            <div class="container mx-auto text-center">
+                <h2 class="text-3xl md:text-4xl font-bold mb-10">
+                    <span class="bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-500">
+                        Mari Terhubung
+                    </span>
+                </h2>
+                <p class="text-lg text-gray-300 mb-8 max-w-xl mx-auto">
+                    Saya terbuka untuk diskusi mengenai peluang di bidang analitik data, proyek kolaborasi, atau sekadar berbagi pengetahuan tentang ilmu data.
+                </p>
+                <div class="flex flex-wrap justify-center items-center gap-6 md:gap-8">
+                    <a href="mailto:sirjosephholmes@gmail.com" class="flex items-center space-x-2 text-lg text-gray-300 hover:text-blue-400 transition-colors">
+                        <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="16" x="2" y="4" rx="2"></rect><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"></path></svg>
+                        <span>sirjosephholmes@gmail.com</span>
+                    </a>
+                    <a href="https://www.linkedin.com/in/yusuf-al-rahman-8049a21b3/" target="_blank" rel="noopener noreferrer" class="flex items-center space-x-2 text-lg text-gray-300 hover:text-blue-400 transition-colors">
+                         <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-2-2 2 2 0 0 0-2 2v7h-4v-7a6 6 0 0 1 6-6z"></path><rect x="2" y="9" width="4" height="12"></rect><circle cx="4" cy="4" r="2"></circle></svg>
+                        <span>LinkedIn</span>
+                    </a>
+                    <a href="https://wa.me/6282122729841" target="_blank" rel="noopener noreferrer" class="flex items-center space-x-2 text-lg text-gray-300 hover:text-blue-400 transition-colors">
+                        <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="20" x="5" y="2" rx="2" ry="2"></rect><path d="M12 18h.01"></path></svg>
+                        <span>+62 821-2272-9841</span>
+                    </a>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-gray-900 text-gray-400 py-8 text-center">
+        <div class="container mx-auto">
+            <p>&copy; <span id="currentYear"></span> Yusuf Al-Rahman. All rights reserved.</p>
+            <p class="text-sm mt-1">Portfolio Version: 2.1 | Last Updated: May 2025 (Sesuai PDF)</p>
+            <p class="text-sm mt-1">Dibangun dengan HTML, Tailwind CSS, & Vanilla JavaScript.</p>
         </div>
+    </footer>
+
+    <!-- Project Detail Modal -->
+    <div id="projectDetailModal" class="modal fixed inset-0 bg-black bg-opacity-80 items-center justify-center z-50 p-4">
+        <div class="bg-gray-800 text-white rounded-xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-hidden flex flex-col">
+            <!-- Modal Header -->
+            <div class="p-5 border-b border-gray-700 flex justify-between items-center">
+                <h2 id="modalTitle" class="text-2xl font-bold text-blue-400"></h2>
+                <button id="closeModalButton" class="text-gray-400 hover:text-white transition-colors">
+                    <svg class="w-7 h-7" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                </button>
+            </div>
+            <!-- Modal Content (Scrollable) -->
+            <div id="modalContentContainer" class="modal-content overflow-y-auto p-6 flex-grow prose prose-sm prose-invert max-w-none">
+                <!-- Content will be injected here -->
+            </div>
+            <!-- Modal Footer -->
+            <div class="p-4 border-t border-gray-700 text-right">
+                <button id="closeModalButtonFooter" class="bg-purple-600 hover:bg-purple-500 text-white font-semibold py-2 px-6 rounded-lg transition-colors duration-300">
+                    Tutup
+                </button>
+            </div>
+        </div>
+    </div>
+
+<script>
+    // --- Project Data (Embedded) ---
+    const projectsData = [
+      {
+        id: "flight-delay-prediction",
+        title: "Prediksi Keterlambatan Penerbangan & Optimasi Operasional",
+        description: "Menganalisis faktor penyebab keterlambatan penerbangan untuk optimasi jadwal dan kepuasan pelanggan.",
+        businessProblem: "Memahami dan menganalisis faktor-faktor penyebab keterlambatan penerbangan, serta mengembangkan model prediksi keterlambatan yang akurat. Tujuannya adalah untuk membantu maskapai dan otoritas bandara dalam mengoptimalkan jadwal penerbangan, mengantisipasi risiko operasional, dan meningkatkan kepuasan pelanggan melalui perencanaan proaktif.",
+        dataset: "Dataset historis penerbangan berisi ribuan catatan penerbangan, dengan informasi detail seperti waktu keberangkatan dan kedatangan, kondisi cuaca, rute penerbangan, dan status keterlambatan.",
+        techStack: ["Python", "Pandas", "NumPy", "Scikit-learn", "XGBoost", "Matplotlib", "Seaborn", "Jupyter Notebook"],
+        keyFindings: [
+          "Faktor Kunci: Kondisi cuaca, waktu keberangkatan, dan rute penerbangan adalah variabel signifikan yang mempengaruhi keterlambatan.",
+          "Model Prediksi: Pendekatan berbasis machine learning mencapai akurasi tinggi dalam mengidentifikasi potensi keterlambatan.",
+          "Pola Temporal: Penerbangan pada jam sibuk dan hari padat menunjukkan probabilitas keterlambatan yang lebih tinggi.",
+          "Segmentasi Rute: Analisis mendetail memungkinkan identifikasi segmen rute tertentu yang memerlukan manajemen operasional ekstra."
+        ],
+        businessImpact: "Prediksi keterlambatan yang akurat membantu maskapai mengoptimalkan strategi penjadwalan ulang, mengurangi biaya operasional, meningkatkan layanan pelanggan, serta mendukung pengambilan keputusan strategis dan manajemen risiko.",
+        projectUrl: "https://github.com/yusufalrahman",
+        dashboardUrl: "#", 
+        imageUrl: "https://placehold.co/600x400/3B82F6/FFFFFF?text=Visualisasi+Prediksi+Penerbangan&font=Inter",
+        codeSnippets: [
+          { language: 'python', title: 'Memuat Data Penerbangan', code: 'import pandas as pd\n\n# Memuat dataset\ndf_flights = pd.read_csv("flight_delay_data.csv")\nprint("Data awal penerbangan:")\nprint(df_flights.head())' },
+          { language: 'python', title: 'Pelatihan Model XGBoost (Contoh)', code: 'from sklearn.model_selection import train_test_split\nfrom xgboost import XGBClassifier\n\n# Asumsikan X adalah fitur dan y adalah target (status keterlambatan)\nX_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)\n\n# Inisialisasi dan latih model\nxgb_model = XGBClassifier(use_label_encoder=False, eval_metric=\'logloss\')\nxgb_model.fit(X_train, y_train)\n\naccuracy = xgb_model.score(X_test, y_test)\nprint(f"Akurasi Model XGBoost: {accuracy:.4f}")' }
+        ],
+        visualizations: [
+            { title: "Faktor Keterlambatan Utama", url: "https://placehold.co/600x350/4ADE80/000000?text=Grafik+Faktor+Keterlambatan&font=Inter" },
+            { title: "Akurasi Model Prediksi", url: "https://placehold.co/600x350/F97316/000000?text=Grafik+Akurasi+Model&font=Inter" }
+        ]
+      },
+      {
+        id: "waterfowl-data-pipeline",
+        title: "Pipeline Data Unggas Air: Standarisasi Survei & Kontrol Kualitas Otomatis",
+        description: "Mengotomatiskan pemrosesan dan standarisasi laporan survei unggas air mentah.",
+        businessProblem: "Mengotomatiskan pemrosesan dan standarisasi laporan survei unggas air mentah untuk menghasilkan output data agregat yang konsisten. Solusi ini dirancang untuk mendukung peneliti satwa liar dengan memastikan pemantauan populasi bebek yang andal, memungkinkan analisis ekologi yang akurat dan keputusan konservasi yang tepat.",
+        dataset: "String survei dari lahan basah Amerika Utara, menggabungkan nama spesies bebek dengan jumlah yang dilaporkan. Memerlukan parsing, agregasi, dan kontrol kualitas (misalnya, mengecualikan laporan dengan 'Labrador Duck').",
+        techStack: ["Python", "Logika Manipulasi String Kustom", "Unit Testing (pytest)"],
+        keyFindings: [
+          "Standarisasi Seragam: Aturan yang kuat untuk mengubah nama bebek menjadi kode enam huruf yang konsisten.",
+          "Agregasi Akurat: Berhasil menjumlahkan hitungan untuk spesies, output diurutkan.",
+          "Jaminan Kualitas: Aturan diskualifikasi untuk dataset yang melaporkan spesies punah."
+        ],
+        businessImpact: "Peningkatan integritas data, analisis yang disederhanakan untuk peneliti, dan pendekatan yang dapat diskalakan untuk dataset ekologi lainnya.",
+        projectUrl: "https://github.com/yusufalrahman",
+        dashboardUrl: "#",
+        imageUrl: "https://placehold.co/600x400/10B981/FFFFFF?text=Alur+Pipeline+Data&font=Inter",
+         codeSnippets: [
+          { language: 'python', title: 'Standarisasi Nama Spesies', code: 'def standardize_species_name(name):\n    words = name.split()\n    if len(words) == 1:\n        return name[:6].upper() # Ambil 6 huruf pertama jika satu kata\n    else:\n        # Ambil 3 huruf pertama dari dua kata pertama\n        return (words[0][:3] + words[1][:3]).upper()\n\nprint(f"\'Mallard\': {standardize_species_name(\'Mallard\')}")\nprint(f"\'Blue-winged Teal\': {standardize_species_name(\'Blue-winged Teal\')}")' }
+        ],
+        visualizations: [
+            { title: "Contoh Kode Standar", url: "https://placehold.co/600x350/22D3EE/000000?text=Hasil+Standarisasi+Nama&font=Inter" },
+            { title: "Proses Agregasi Data", url: "https://placehold.co/600x350/A3E635/000000?text=Contoh+Data+Agregat&font=Inter" }
+        ]
+      },
+       {
+        id: "collinear-validator",
+        title: "Validator Kolinear: Pemeriksaan Akurasi Penjajaran Vektor",
+        description: "Memverifikasi apakah dua vektor yang berasal dari (0,0) adalah kolinear.",
+        businessProblem: "Memastikan penentuan akurat kolinearitas vektor, penting untuk grafika komputer, simulasi fisika, robotika, dan desain rekayasa.",
+        dataset: "Input algoritmik: dua pasang koordinat berbasis integer (x1, y1) dan (x2, y2), nilai antara -1000 dan 1000. Mencakup kasus tipikal dan edge case (vektor nol).",
+        techStack: ["Python", "Logika Kustom", "Unit Testing (pytest)"],
+        keyFindings: [
+          "Penanganan Edge Case yang Kuat: Algoritma mengurangi pembagian-dengan-nol menggunakan perbandingan perkalian.",
+          "Kesederhanaan dan Efisiensi: Menghindari jebakan umum, berfungsi sebagai alat pengajaran yang baik.",
+          "Wawasan Dasar: Metodologi yang jelas untuk membedakan apakah satu vektor adalah kelipatan skalar dari yang lain."
+        ],
+        businessImpact: "Blok bangunan untuk komputasi geometris lanjutan, sumber belajar yang ditingkatkan, dan dapat diskalakan ke dimensi yang lebih tinggi.",
+        projectUrl: "https://github.com/yusufalrahman",
+        dashboardUrl: "#",
+        imageUrl: "https://placehold.co/600x400/8B5CF6/FFFFFF?text=Validasi+Kolinearitas+Vektor&font=Inter",
+        codeSnippets: [
+          { language: 'python', title: 'Fungsi Pengecekan Kolinearitas', code: 'def are_vectors_collinear(x1, y1, x2, y2):\n    # Vektor (x1, y1) dan (x2, y2) kolinear jika hasil kali silang mereka nol (dalam 2D).\n    # x1*y2 - x2*y1 = 0  atau  x1*y2 == x2*y1\n    return x1 * y2 == x2 * y1\n\n# Contoh penggunaan\nprint(f"Vektor (1,1) dan (2,2) kolinear: {are_vectors_collinear(1, 1, 2, 2)}") # Harusnya True\nprint(f"Vektor (1,1) dan (2,3) kolinear: {are_vectors_collinear(1, 1, 2, 3)}") # Harusnya False\nprint(f"Vektor (0,0) dan (5,5) kolinear: {are_vectors_collinear(0, 0, 5, 5)}") # Harusnya True' }
+        ],
+        visualizations: [
+            { title: "Demo Vektor Kolinear", url: "https://placehold.co/600x350/EC4899/000000?text=Contoh+Vektor+Kolinear&font=Inter" },
+            { title: "Demo Vektor Non-Kolinear", url: "https://placehold.co/600x350/FACC15/000000?text=Contoh+Vektor+Non-Kolinear&font=Inter" }
+        ]
+      },
+      {
+        id: "fault-detection-bots",
+        title: "Deteksi Kesalahan pada BOT Otonom: Kerangka Kerja Pemecahan Masalah Berbasis Data",
+        description: "Mendeteksi dan menonaktifkan BOT yang rusak atau jahat dengan menganalisis log sistem.",
+        businessProblem: "Memastikan keamanan dan keandalan robot otonom dengan mendeteksi dan menonaktifkan BOT yang tidak berfungsi atau jahat dengan menganalisis log sistem untuk pola tertentu (bilangan prima, digit ketiga 2 atau 3, muncul >3 kali). Jika >50 integer yang cocok ditemukan, nonaktifkan BOT.",
+        dataset: "Log sistem: urutan integer empat digit yang mewakili internal sistem BOT.",
+        techStack: ["Python", "Algoritma Deteksi Bilangan Prima", "Logika Pengenalan Pola", "Sistem Keputusan Otomatis"],
+        keyFindings: [
+          "Parsing Log yang Efisien: Pendekatan yang disederhanakan untuk mengekstrak dan menganalisis log.",
+          "Deteksi Berbasis Pola: Sistem berbasis aturan untuk menandai BOT yang menunjukkan perilaku anomali.",
+          "Skalabilitas: Metodologi dapat diperluas ke dataset yang lebih besar dan sistem waktu-nyata."
+        ],
+        businessImpact: "Peningkatan keamanan dengan menetralkan BOT jahat, efisiensi operasional dengan mengotomatiskan pemecahan masalah, dan kerangka kerja yang dapat diskalakan untuk aplikasi yang lebih luas.",
+        projectUrl: "https://github.com/yusufalrahman",
+        dashboardUrl: "#",
+        imageUrl: "https://placehold.co/600x400/F43F5E/FFFFFF?text=Deteksi+Kesalahan+BOT&font=Inter",
+        codeSnippets: [
+          { language: 'python', title: 'Pengecekan Bilangan Prima & Kondisi Log', code: 'def is_prime(n):\n    if n < 2: return False\n    for i in range(2, int(n**0.5) + 1):\n        if n % i == 0: return False\n    return True\n\ndef check_log_entry(entry_value):\n    entry_str = str(entry_value)\n    # Kondisi: prima, digit ketiga \'2\' atau \'3\'\n    if len(entry_str) == 4 and is_prime(entry_value) and entry_str[2] in ["2", "3"]:\n        return True\n    return False\n\nlog_entry = 1223 # Contoh: 1223 adalah prima, digit ketiga adalah 2\nprint(f"Log {log_entry} memenuhi kriteria: {check_log_entry(log_entry)}")' }
+        ],
+        visualizations: [
+            { title: "Analisis Pola Log", url: "https://placehold.co/600x350/6366F1/000000?text=Grafik+Analisis+Pola+Log&font=Inter" },
+            { title: "Dasbor Status BOT", url: "https://placehold.co/600x350/D946EF/000000?text=Dasbor+Pemantauan+BOT&font=Inter" }
+        ]
+      },
+      {
+        id: "race-performance-analytics",
+        title: "Analitik Performa Balap: Wawasan Statistik Terstandarisasi untuk Atlet",
+        description: "Menganalisis hasil balap untuk menyediakan statistik seperti rentang, rata-rata, dan waktu median.",
+        businessProblem: "Menganalisis hasil balap secara akurat untuk asosiasi atletik guna menyediakan statistik yang bermakna seperti rentang, rata-rata, dan waktu median (format hhmmss). Ini memastikan evaluasi kinerja yang terstandarisasi.",
+        dataset: "Hasil balap diformat sebagai string (hhmmss). Tantangan dalam parsing, pengurutan, dan penghitungan statistik.",
+        techStack: ["Python", "Parsing & Pemformatan String", "Pengurutan & Komputasi Statistik", "Unit Testing"],
+        keyFindings: [
+          "Analisis Waktu Terstandarisasi: Pendekatan terstruktur untuk mengekstrak dan menghitung statistik balap.",
+          "Komputasi Efisien: Pengurutan dan perhitungan statistik yang dioptimalkan untuk dataset besar.",
+          "Wawasan Berbasis Data: Perbandingan yang bermakna antar atlet."
+        ],
+        businessImpact: "Peningkatan pelacakan kinerja untuk pelatih/analis, pengambilan keputusan yang dioptimalkan untuk pelatihan/kompetisi, dan dapat diskalakan ke analitik olahraga yang lebih luas.",
+        projectUrl: "https://github.com/yusufalrahman",
+        dashboardUrl: "#",
+        imageUrl: "https://placehold.co/600x400/0EA5E9/FFFFFF?text=Grafik+Analitik+Balap&font=Inter",
+        codeSnippets: [
+          { language: 'python', title: 'Parsing & Formatting Waktu Balap', code: 'def parse_race_time(time_str):\n    """Mengubah string hhmmss menjadi total detik."""\n    h = int(time_str[0:2])\n    m = int(time_str[2:4])\n    s = int(time_str[4:6])\n    return h * 3600 + m * 60 + s\n\ndef format_seconds_to_hms(total_seconds):\n    """Mengubah total detik kembali ke format hh:mm:ss."""\n    h = total_seconds // 3600\n    m = (total_seconds % 3600) // 60\n    s = total_seconds % 60\n    return f"{h:02d}:{m:02d}:{s:02d}"\n\nparsed_seconds = parse_race_time("011030") # 1 jam, 10 menit, 30 detik\nprint(f"Detik: {parsed_seconds}, Format HMS: {format_seconds_to_hms(parsed_seconds)}")' }
+        ],
+        visualizations: [
+            { title: "Distribusi Performa Atlet", url: "https://placehold.co/600x350/06B6D4/000000?text=Grafik+Distribusi+Performa&font=Inter" },
+            { title: "Tren Waktu Median", url: "https://placehold.co/600x350/84CC16/000000?text=Grafik+Tren+Waktu+Median&font=Inter" }
+        ]
+      }
+    ];
+
+    // --- DOM Elements ---
+    const projectCardsContainer = document.getElementById('project-cards-container');
+    const modal = document.getElementById('projectDetailModal');
+    const modalTitle = document.getElementById('modalTitle');
+    const modalContentContainer = document.getElementById('modalContentContainer');
+    const closeModalButton = document.getElementById('closeModalButton');
+    const closeModalButtonFooter = document.getElementById('closeModalButtonFooter');
+
+    // --- Functions ---
+    function createProjectCard(project) {
+        const card = document.createElement('div');
+        card.className = 'bg-gray-800 rounded-xl shadow-2xl overflow-hidden transform hover:scale-105 transition-all duration-300 cursor-pointer flex flex-col h-full group';
+        card.innerHTML = `
+            <div class="relative h-56">
+                <img src="${project.imageUrl || 'https://placehold.co/600x400/777/FFF?text=Project+Image&font=Inter'}" alt="${project.title}" class="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" onerror="this.onerror=null;this.src='https://placehold.co/600x400/777/FFF?text=Error+Loading&font=Inter';">
+                <div class="absolute inset-0 bg-black bg-opacity-50 group-hover:bg-opacity-30 transition-opacity duration-300"></div>
+            </div>
+            <div class="p-6 flex flex-col flex-grow">
+                <h3 class="text-xl font-semibold mb-2 text-blue-400 group-hover:text-blue-300 transition-colors duration-300">${project.title}</h3>
+                <p class="text-gray-400 text-sm mb-4 flex-grow">${project.description}</p>
+                <div class="mt-auto">
+                    <button class="w-full bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white font-medium py-2 px-4 rounded-lg transition-all duration-300 shadow-md hover:shadow-lg view-detail-button">
+                        Lihat Detail Proyek
+                    </button>
+                </div>
+            </div>
+        `;
+        card.querySelector('.view-detail-button').addEventListener('click', (e) => {
+            e.stopPropagation(); // Prevent card click if button is clicked
+            openModal(project);
+        });
+         card.addEventListener('click', () => openModal(project)); // Card itself is clickable
+        return card;
+    }
+
+    function populateProjectCards() {
+        if (!projectCardsContainer) return;
+        projectCardsContainer.innerHTML = ''; // Clear existing cards
+        projectsData.forEach(project => {
+            projectCardsContainer.appendChild(createProjectCard(project));
+        });
+    }
+
+    function openModal(project) {
+        modalTitle.textContent = project.title;
         
-        {/* Footer Modal */}
-        <div className="p-4 border-t border-gray-700 text-right">
-            <button 
-                onClick={onClose} 
-                className="bg-purple-600 hover:bg-purple-500 text-white font-semibold py-2 px-6 rounded-lg transition-colors duration-300"
-            >
-                Tutup
-            </button>
-        </div>
-      </div>
-    </div>
-  );
-};
+        let contentHTML = `
+            <div class="mb-6">
+                <h4 class="jupyter-cell-title" style="border-color: #a78bfa;">Masalah Bisnis</h4>
+                <p>${project.businessProblem}</p>
+            </div>
+            <div class="mb-6">
+                <h4 class="jupyter-cell-title" style="border-color: #a78bfa;">Dataset</h4>
+                <p>${project.dataset}</p>
+            </div>
+            <div class="mb-6">
+                <h4 class="jupyter-cell-title" style="border-color: #a78bfa;">Teknologi yang Digunakan</h4>
+                <ul class="list-disc list-inside space-y-1">
+                    ${project.techStack.map(tech => `<li>${tech}</li>`).join('')}
+                </ul>
+            </div>
+        `;
 
-
-const ProjectsSection = ({ projects, onSelectProject }) => (
-  <Section id="proyek" className="bg-gray-850">
-    <div className="container mx-auto">
-      <h2 className="text-3xl md:text-4xl font-bold text-center mb-12 text-white">
-        <span className="bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-500">
-          Proyek Unggulan
-        </span>
-      </h2>
-      {projects.length === 0 ? (
-        <p className="text-center text-gray-400">Memuat proyek atau tidak ada proyek untuk ditampilkan...</p>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-          {projects.map((project) => (
-            <ProjectCard key={project.id} project={project} onSelectProject={onSelectProject} />
-          ))}
-        </div>
-      )}
-    </div>
-  </Section>
-);
-
-const WorkPhilosophy = () => (
-  <Section id="filosofi" className="bg-gray-900 text-white">
-    <div className="container mx-auto text-center">
-      <h2 className="text-3xl md:text-4xl font-bold mb-10">
-        <span className="bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-500">
-          Filosofi Kerja Saya
-        </span>
-      </h2>
-      <div className="grid md:grid-cols-3 gap-8 max-w-4xl mx-auto">
-        <div className="bg-gray-800 p-6 rounded-lg shadow-lg">
-          <h3 className="text-xl font-semibold text-blue-400 mb-3">Pengambilan Keputusan Berbasis Data</h3>
-          <p className="text-gray-300">Setiap keputusan bisnis harus didukung oleh data yang solid. Pendekatan saya selalu dimulai dengan memahami konteks bisnis, mendefinisikan metrik yang relevan, dan menerapkan metode statistik yang sesuai.</p>
-        </div>
-        <div className="bg-gray-800 p-6 rounded-lg shadow-lg">
-          <h3 className="text-xl font-semibold text-blue-400 mb-3">Pembelajaran Berkelanjutan</h3>
-          <p className="text-gray-300">Ilmu data adalah bidang yang berkembang pesat. Saya aktif mengikuti perkembangan terbaru dalam alat analitik, algoritma machine learning, dan praktik terbaik industri.</p>
-        </div>
-        <div className="bg-gray-800 p-6 rounded-lg shadow-lg">
-          <h3 className="text-xl font-semibold text-blue-400 mb-3">Fokus pada Dampak Bisnis</h3>
-          <p className="text-gray-300">Keunggulan teknis harus diterjemahkan menjadi nilai bisnis. Setiap analisis yang saya lakukan diarahkan untuk menghasilkan wawasan yang dapat ditindaklanjuti yang meningkatkan kinerja bisnis.</p>
-        </div>
-      </div>
-      <p className="mt-12 text-lg text-gray-400 italic">
-        "In God we trust, all others must bring data." - W. Edwards Deming
-      </p>
-    </div>
-  </Section>
-);
-
-const Contact = () => (
-  <Section id="kontak" className="bg-gray-850 text-white">
-    <div className="container mx-auto text-center">
-      <h2 className="text-3xl md:text-4xl font-bold mb-10">
-        <span className="bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-500">
-          Mari Terhubung
-        </span>
-      </h2>
-      <p className="text-lg text-gray-300 mb-8 max-w-xl mx-auto">
-        Saya terbuka untuk diskusi mengenai peluang di bidang analitik data, proyek kolaborasi, atau sekadar berbagi pengetahuan tentang ilmu data.
-      </p>
-      <div className="flex flex-wrap justify-center items-center gap-6 md:gap-8">
-        <a href="mailto:sirjosephholmes@gmail.com" className="flex items-center space-x-2 text-lg text-gray-300 hover:text-blue-400 transition-colors">
-          <MailIcon className="w-6 h-6" />
-          <span>sirjosephholmes@gmail.com</span>
-        </a>
-        <a href="https://www.linkedin.com/in/yusuf-al-rahman-8049a21b3/" target="_blank" rel="noopener noreferrer" className="flex items-center space-x-2 text-lg text-gray-300 hover:text-blue-400 transition-colors">
-          <LinkedinIcon className="w-6 h-6" />
-          <span>LinkedIn</span>
-        </a>
-        <a href="https://wa.me/6282122729841" target="_blank" rel="noopener noreferrer" className="flex items-center space-x-2 text-lg text-gray-300 hover:text-blue-400 transition-colors">
-          <SmartphoneIcon className="w-6 h-6" />
-          <span>+62 821-2272-9841</span>
-        </a>
-      </div>
-    </div>
-  </Section>
-);
-
-const Footer = () => (
-  <footer className="bg-gray-900 text-gray-400 py-8 text-center">
-    <div className="container mx-auto">
-      <p>&copy; {new Date().getFullYear()} Yusuf Al-Rahman. All rights reserved.</p>
-      <p className="text-sm mt-1">Portfolio Version: 2.1 | Last Updated: May 2025 (Sesuai PDF)</p>
-      <p className="text-sm mt-1">Dibangun dengan React & Tailwind CSS.</p>
-    </div>
-  </footer>
-);
-
-
-// --- Main App Component ---
-export default function App() {
-  const [selectedProject, setSelectedProject] = useState(null);
-  const [projects, setProjects] = useState([]); // Akan diisi dari Firestore atau data awal
-  const [db, setDb] = useState(null);
-  const [auth, setAuth] = useState(null);
-  const [userId, setUserId] = useState(null);
-  const [isAuthReady, setIsAuthReady] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
-
-  // Initialize Firebase
-  useEffect(() => {
-    try {
-      const app = initializeApp(firebaseConfig);
-      const firestoreDb = getFirestore(app);
-      const firestoreAuth = getAuth(app);
-      setDb(firestoreDb);
-      setAuth(firestoreAuth);
-      // console.log("Firebase Initialized. App ID:", appId);
-      // console.log("Using Firebase Project ID:", firestoreDb.app.options.projectId);
-    } catch (error) {
-      console.error("Error initializing Firebase:", error);
-      // Fallback to initial data if Firebase fails
-      setProjects(INITIAL_PROJECTS_DATA);
-      setIsLoading(false);
-      setIsAuthReady(true); // Proceed without auth if Firebase init fails
-    }
-  }, []);
-
-  // Firebase Authentication State
- useEffect(() => {
-    if (!auth) {
-        setIsAuthReady(true); // If auth is not even initialized, consider auth ready for non-Firebase flow
-        return;
-    }
-
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      if (user) {
-        setUserId(user.uid);
-        // console.log("User is signed in with UID:", user.uid);
-      } else {
-        // console.log("User is signed out. Attempting to sign in...");
-        try {
-          if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-            // console.log("Attempting sign in with custom token.");
-            await signInWithCustomToken(auth, __initial_auth_token);
-          } else {
-            // console.log("Attempting sign in anonymously.");
-            await signInAnonymously(auth);
-          }
-        } catch (error) {
-          console.error("Error during sign-in:", error);
-           // Fallback for auth error
-          setUserId(crypto.randomUUID()); // Generate a random ID for non-auth use
+        if (project.codeSnippets && project.codeSnippets.length > 0) {
+            contentHTML += `
+            <div class="mb-6">
+                <h4 class="jupyter-cell-title flex items-center" style="border-color: #34d399;">
+                    <svg class="w-5 h-5 mr-2" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>
+                    Cuplikan Kode
+                </h4>
+                ${project.codeSnippets.map(snippet => `
+                    <div class="jupyter-code-block">
+                        <p class="jupyter-code-title">${snippet.title || `Kode ${snippet.language}`}</p>
+                        <pre class="jupyter-code-content"><code class="language-${snippet.language}">${escapeHtml(snippet.code)}</code></pre>
+                    </div>
+                `).join('')}
+            </div>`;
         }
-      }
-      setIsAuthReady(true);
+        
+        contentHTML += `
+            <div class="mb-6">
+                <h4 class="jupyter-cell-title" style="border-color: #a78bfa;">Temuan Utama</h4>
+                <ul class="list-disc list-inside space-y-1">
+                    ${project.keyFindings.map(finding => `<li>${finding}</li>`).join('')}
+                </ul>
+            </div>
+        `;
+
+        if (project.visualizations && project.visualizations.length > 0) {
+            contentHTML += `
+            <div class="mb-6">
+                <h4 class="jupyter-cell-title flex items-center" style="border-color: #fbbf24;">
+                     <svg class="w-5 h-5 mr-2" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h20"></path><path d="M4 3v18"></path><path d="M20 3v18"></path><path d="M12 12l-4 4l-4-4"></path><path d="M8 3v4"></path><path d="M16 3v4"></path><path d="M12 3v4"></path></svg>
+                    Visualisasi Kunci
+                </h4>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
+                    ${project.visualizations.map(viz => `
+                        <div class="bg-gray-700 p-3 rounded-lg shadow-md group">
+                            <img src="${viz.url}" alt="${viz.title || 'Visualisasi'}" class="w-full h-auto rounded object-contain mb-2 border border-gray-600 transition-transform duration-300 group-hover:scale-105" onerror="this.onerror=null;this.src='https://placehold.co/400x250/777/FFF?text=Error+Loading+Viz&font=Inter';">
+                            <p class="text-center text-sm text-gray-300">${viz.title || 'Visualisasi'}</p>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>`;
+        }
+
+        contentHTML += `
+            <div class="mb-6">
+                <h4 class="jupyter-cell-title" style="border-color: #a78bfa;">Dampak Bisnis</h4>
+                <p>${project.businessImpact}</p>
+            </div>
+             <div class="mt-6 flex flex-wrap gap-4">
+        `;
+
+        if (project.projectUrl && project.projectUrl !== "#") {
+            contentHTML += `
+                <a href="${project.projectUrl}" target="_blank" rel="noopener noreferrer" class="bg-gray-700 hover:bg-gray-600 text-white font-medium py-2 px-4 rounded-lg transition-colors duration-300 flex items-center space-x-2">
+                    <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"></path></svg>
+                    <span>Lihat di GitHub</span>
+                </a>`;
+        }
+        if (project.dashboardUrl && project.dashboardUrl !== "#") {
+            contentHTML += `
+                <a href="${project.dashboardUrl}" target="_blank" rel="noopener noreferrer" class="bg-blue-600 hover:bg-blue-500 text-white font-medium py-2 px-4 rounded-lg transition-colors duration-300 flex items-center space-x-2">
+                    <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
+                    <span>Live Dashboard</span>
+                </a>`;
+        }
+        contentHTML += `</div>`;
+
+        modalContentContainer.innerHTML = contentHTML;
+        modal.classList.add('open');
+        document.body.style.overflow = 'hidden'; // Prevent background scroll
+    }
+
+    function closeModal() {
+        modal.classList.remove('open');
+        document.body.style.overflow = 'auto'; // Restore scroll
+    }
+
+    function escapeHtml(unsafe) {
+        if (typeof unsafe !== 'string') {
+            return '';
+        }
+        return unsafe
+             .replace(/&/g, "&amp;")
+             .replace(/</g, "&lt;")
+             .replace(/>/g, "&gt;")
+             .replace(/"/g, "&quot;")
+             .replace(/'/g, "&#039;");
+    }
+
+    // --- Event Listeners ---
+    closeModalButton.addEventListener('click', closeModal);
+    closeModalButtonFooter.addEventListener('click', closeModal);
+    modal.addEventListener('click', (event) => { // Close modal if backdrop is clicked
+        if (event.target === modal) {
+            closeModal();
+        }
     });
-    return () => unsubscribe();
-  }, [auth]);
-
-
-  // Seed initial data to Firestore if collection is empty (ONE-TIME operation or for demo)
-  // IMPORTANT: In a real app, you'd manage data via an admin interface or scripts, not on client load.
-  // This is for demonstration purposes in this sandboxed environment.
-  useEffect(() => {
-    if (!db || !isAuthReady || !userId || firebaseConfig.projectId === "DEMO_ONLY") {
-        // console.log("Skipping seeding: DB not ready, auth not ready, no user ID, or demo project ID.");
-        return;
-    }
-
-    const seedData = async () => {
-      // console.log("Checking if data seeding is needed for user:", userId);
-      const projectsCollectionPath = `artifacts/${appId}/users/${userId}/portfolio_projects`;
-      // console.log("Using projects collection path for seeding:", projectsCollectionPath);
-      const projectsCollectionRef = collection(db, projectsCollectionPath);
-      try {
-        const querySnapshot = await getDocs(projectsCollectionRef);
-        if (querySnapshot.empty) {
-          // console.log("Projects collection is empty. Seeding initial data...");
-          for (const projectData of INITIAL_PROJECTS_DATA) {
-            const projectDocRef = doc(db, projectsCollectionPath, projectData.id);
-            await setDoc(projectDocRef, projectData);
-          }
-          // console.log("Initial data seeded successfully.");
-        } else {
-          // console.log("Projects collection already has data. No seeding needed.");
+    document.addEventListener('keydown', (event) => { // Close modal with Escape key
+        if (event.key === 'Escape' && modal.classList.contains('open')) {
+            closeModal();
         }
-      } catch (error) {
-        console.error("Error seeding or checking data:", error);
-      }
-    };
-
-    // Only seed if NOT using a demo project ID and appId is not the default fallback
-    if (firebaseConfig.projectId !== "DEMO_ONLY" && appId !== 'default-portfolio-app') {
-        seedData();
-    } else if (appId === 'default-portfolio-app' && firebaseConfig.projectId === "DEMO_ONLY") {
-        // console.log("Running in local/demo mode with default app ID, seeding enabled for demo.");
-        seedData(); // Allow seeding for local demo with default-app-id
-    }
-  }, [db, isAuthReady, userId]);
-
-
-  // Fetch projects from Firestore
-  useEffect(() => {
-    if (!isAuthReady) { // Wait for auth to be ready
-        // console.log("Auth not ready, deferring project fetch.");
-        return;
-    }
-
-    if (!db || !userId || firebaseConfig.projectId === "DEMO_ONLY") {
-        // If Firebase is not ready, or it's a demo setup without proper config, use initial data
-        // console.log("Using initial projects data (Firebase not fully configured, no user, or demo mode).");
-        setProjects(INITIAL_PROJECTS_DATA);
-        setIsLoading(false);
-        return;
-    }
-    
-    setIsLoading(true);
-    const projectsCollectionPath = `artifacts/${appId}/users/${userId}/portfolio_projects`;
-    // console.log(`Fetching projects from Firestore path: ${projectsCollectionPath}`);
-    const projectsCollectionRef = collection(db, projectsCollectionPath);
-    
-    const unsubscribe = onSnapshot(projectsCollectionRef, (snapshot) => {
-      const fetchedProjects = snapshot.docs.map(docSnap => ({ id: docSnap.id, ...docSnap.data() }));
-      if (fetchedProjects.length > 0) {
-        setProjects(fetchedProjects);
-        // console.log("Projects fetched from Firestore:", fetchedProjects);
-      } else {
-        // console.log("No projects in Firestore for this user, or collection is empty. Using initial data as fallback.");
-        setProjects(INITIAL_PROJECTS_DATA);
-      }
-      setIsLoading(false);
-    }, (error) => {
-      console.error("Error fetching projects from Firestore:", error);
-      // Fallback to initial data on error
-      setProjects(INITIAL_PROJECTS_DATA);
-      setIsLoading(false);
     });
 
-    return () => unsubscribe(); // Cleanup listener on component unmount
-  }, [db, isAuthReady, userId]); // Rerun if db, auth readiness, or userId changes
+    // Section fade-in on scroll
+    const sections = document.querySelectorAll('.section-fade-in');
+    const sectionObserver = new IntersectionObserver((entries, observer) => {
+        entries.forEach(entry => {
+            if (entry.isIntersecting) {
+                entry.target.classList.add('visible');
+                observer.unobserve(entry.target);
+            }
+        });
+    }, { threshold: 0.1 });
 
+    sections.forEach(section => {
+        sectionObserver.observe(section);
+    });
+    
+    // --- Initialization ---
+    document.addEventListener('DOMContentLoaded', () => {
+        populateProjectCards();
+        document.getElementById('currentYear').textContent = new Date().getFullYear();
+        // Make first section visible immediately as it's likely in viewport
+        const firstSection = document.querySelector('.section-fade-in');
+        if (firstSection) {
+            setTimeout(() => firstSection.classList.add('visible'), 100); // Slight delay for effect
+        }
+    });
 
-  const handleSelectProject = (project) => {
-    setSelectedProject(project);
-    document.body.style.overflow = 'hidden'; // Prevent background scroll when modal is open
-  };
-
-  const handleCloseModal = () => {
-    setSelectedProject(null);
-    document.body.style.overflow = 'auto'; // Restore scroll
-  };
-  
-  // Add a simple loading state, ensure it doesn't show if using DEMO_ONLY config initially
-  if (isLoading && !(firebaseConfig.projectId === "DEMO_ONLY" && projects.length > 0) ) {
-    return (
-      <div className="bg-gray-900 min-h-screen flex items-center justify-center text-white text-xl">
-        Memuat portofolio Yusuf Al-Rahman...
-      </div>
-    );
-  }
-
-
-  return (
-    <div className="bg-gray-900 min-h-screen font-sans">
-      <Header />
-      <main>
-        <Hero />
-        <ProjectsSection projects={projects} onSelectProject={handleSelectProject} />
-        <WorkPhilosophy />
-        <Contact />
-      </main>
-      <Footer />
-      {selectedProject && (
-        <ProjectDetailModal project={selectedProject} onClose={handleCloseModal} />
-      )}
-    </div>
-  );
-}
-
+</script>
+</body>
+</html>
